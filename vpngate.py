@@ -362,7 +362,12 @@ def check_one(node, session):
             out["error"] = f"HTTP {r.status_code}"
             out["worker_error"] = True
             return out
-        j = r.json()
+        try:
+            j = r.json()
+        except ValueError:
+            out["error"] = f"Worker 返回非 JSON ({r.headers.get('content-type', 'unknown')})"
+            out["worker_error"] = True
+            return out
         ok = bool(j.get("success"))
         out["success"] = ok
         out["status"] = "success" if ok else "failed"
@@ -525,6 +530,13 @@ def main():
 
     log("CLOUDFLARE WORKER", f"检测成功: {len(success)}")
     log("CLOUDFLARE WORKER", f"检测失败: {len(failed)}" + (f" (其中 Worker 异常 {len(worker_errors)})" if worker_errors else ""))
+    if worker_errors:
+        worker_host = urlsplit(WORKER_CHECK_URL).netloc
+        samples = []
+        for item in worker_errors[:3]:
+            error = str(item.get("error") or "未知错误")
+            samples.append(error.replace(WORKER_CHECK_URL, "<worker>").replace(worker_host, "<worker>"))
+        log("CLOUDFLARE WORKER", f"异常示例: {' | '.join(samples)}")
     log("CLOUDFLARE WORKER", f"耗时: {elapsed:.1f}s")
 
     if uniq and not success and len(worker_errors) == len(uniq):
