@@ -68,14 +68,18 @@ edgetunnel 后台「自定义优选IP」框填 https://…/nodes.txt
 
 ### 第 4 步：修改配置（重点）
 
-进你 fork 的仓库，修改 `vpngate.py`：
+进你 fork 的仓库，先配置 Actions 所需的 Worker 和入口地址：
 
 | 文件 | 位置 | 改成什么 | 为什么 |
 | :--- | :--- | :--- | :--- |
-| .github/workflows/check.yml | env 里的 `CHECK_WORKER` | 你的检测 Worker 域名，形如 `https://xxx.workers.dev/check?sstp=vpn:vpn@` | 检测统一走你自己的 Worker |
+| GitHub Settings | Secrets and variables → Actions → New repository secret | 新建 `DOMAIN`，值为你的检测 Worker 域名或完整地址，例如 `https://xxx.workers.dev/check?sstp=vpn:vpn@` | 检测统一走你自己的 Worker |
 | vpngate.py | `NODES_URL` | 把里面写死的固定地址换成 `你的用户名/仓库名` | 自动更新时用到的固定地址 |
 
-> **注意**：`vpngate.py` 中**不需要**配置 `EDT_UUID` 和 `EDT_DOMAIN`。你之前看到的这两个变量是旧版遗留，现已删除。edgetunnel 后台会自己处理 UUID 和域名。
+`DOMAIN` 可以填写裸域名，工作流会自动补上 `https://` 和 `/check`。保存前请用浏览器访问 `https://你的Worker域名/check?sstp=vpn:vpn@任意节点:端口`，确认返回 JSON。
+
+`EDGE_HOSTS` 当前默认为空。请在 `vpngate.py` 中填入至少一个可用的入口地址，格式为 `域名:443`，或者配置 `HOSTS_ENTRY` / `OPTIMAL_API`。没有入口地址时，脚本会明确报告配置错误。
+
+> **注意**：`vpngate.py` 中不需要配置 `EDT_UUID` 和 `EDT_DOMAIN`。这两个参数属于 edgetunnel 本身。
 
 ### 第 5 步：开启 GitHub Pages 与 Actions
 
@@ -128,7 +132,7 @@ https://你的GitHub用户名.github.io/仓库名/nodes.txt
 | 常量 | 说明 |
 | :--- | :--- |
 | `EDGE_HOSTS` | 入口优选域名（换域名改这里） |
-| `WORKER_CHECK_URL` | 检测 Worker（本地运行默认值，Action 里用 workflow 的 `CHECK_WORKER` 覆盖） |
+| `CHECK_WORKER` | 检测 Worker（Actions 中由 `DOMAIN` secret 注入） |
 | `NODES_URL` | 自动更新时用到的固定地址（fork 后改成你自己的） |
 
 > 再次强调：`vpngate.py` **不需要**配置 `EDT_UUID` 和 `EDT_DOMAIN`，这两个参数属于 edgetunnel 本身。
