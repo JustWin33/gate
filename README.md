@@ -151,7 +151,7 @@ https://你的GitHub用户名.github.io/仓库名/nodes.txt
 到 Actions 页看最近一次运行是否成功、cron 是否还在。
 
 ### 检测 Worker 报错
-确认 Worker 部署成功、域名填对（workflow 里的 `CHECK_WORKER`），浏览器直接访问 `https://你的Worker/check?sstp=...` 看是否返回 JSON。
+确认 Worker 已部署，`DOMAIN` secret 填写的是 Worker 地址。浏览器直接访问 `https://你的Worker/check?sstp=...`，确认返回 JSON，而不是 HTML 页面。
 
 ### 不知道 UUID 和节点域名在哪里看
 登录 edgetunnel 后台（`https://你的域名/admin`），在后台首页就能看到。
