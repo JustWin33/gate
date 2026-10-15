@@ -25,6 +25,30 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Validate Worker configuration
+        env:
+          CHECK_WORKER: ${{ secrets.DOMAIN }}
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          raw = os.environ.get("CHECK_WORKER", "").strip()
+          if not raw:
+              raise SystemExit(
+                  "未配置 DOMAIN secret。请在 Settings > Secrets and variables > Actions 中设置，"
+                  "值为检测 Worker 地址，例如 https://worker.example.com/check?sstp=vpn:vpn@"
+              )
+          value = raw if "://" in raw else "https://" + raw
+          parsed = urlsplit(value)
+          if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+              raise SystemExit("DOMAIN secret 不是有效的 http(s) Worker 地址")
+          lowered = value.lower()
+          if any(marker in lowered for marker in ("你的域名", "your-domain", "your_domain", "your domain")):
+              raise SystemExit("DOMAIN secret 仍是占位符，请替换为实际的 Worker 地址")
+          print(f"Worker host: {parsed.netloc}")
+          PY
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 

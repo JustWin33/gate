@@ -21,7 +21,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from urllib.parse import quote
+from urllib.parse import urlsplit
 
 import requests
 
@@ -41,7 +41,8 @@ VPNGATE_MIRROR = os.environ.get(
     "VPNGATE_MIRROR",
     "https://raw.githubusercontent.com/fdciabdul/Vpngate-Scraper-API/main/json/data.json",
 )
-WORKER_CHECK_URL = os.environ.get("CHECK_WORKER", "https://你的域名/check?sstp=vpn:vpn@")
+RAW_CHECK_WORKER = os.environ.get("CHECK_WORKER", "")
+WORKER_CHECK_URL = ""
 CONCURRENCY = max(1, int(os.environ.get("CHECK_CONCURRENCY", "32")))
 CHECK_TIMEOUT = float(os.environ.get("CHECK_TIMEOUT", "90"))
 MAX_CHECK_NODES = int(os.environ.get("MAX_CHECK_NODES", "0"))
@@ -112,6 +113,26 @@ def log(section, msg=""):
 def die(msg):
     log("FATAL", f"[失败] {msg}")
     sys.exit(1)
+
+def normalize_worker_url(raw):
+    """Normalize a Worker domain or full /check URL to a clean endpoint."""
+    value = (raw or "").strip()
+    if not value:
+        raise ValueError(
+            "未配置 CHECK_WORKER。请在 GitHub Actions secret DOMAIN 中设置检测 Worker 地址"
+        )
+    lowered = value.lower()
+    if any(marker in lowered for marker in ("你的域名", "your-domain", "your_domain", "your domain")):
+        raise ValueError("CHECK_WORKER 仍是占位符，请替换为实际的 Worker 地址")
+    if "://" not in value:
+        value = "https://" + value
+    parsed = urlsplit(value)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError("CHECK_WORKER 必须是有效的 http(s) 地址")
+    path = parsed.path.rstrip("/") or "/check"
+    if path != "/check":
+        raise ValueError("CHECK_WORKER 的路径必须是 /check")
+    return parsed._replace(path="/check", query="", fragment="").geturl()
 
 # ---------------------------------------------------------------------------
 # 数据抓取
@@ -323,7 +344,6 @@ def classify_network(host, exit_org, is_datacenter=None):
     return "unknown"
 
 def check_one(node, session):
-    url = WORKER_CHECK_URL + quote(f"{node['host']}:{node['port']}", safe="")
     out = dict(node)
     out["protocol"] = "sstp"
     out["link"] = f"sstp://vpn:vpn@{node['host']}:{node['port']}"
@@ -332,7 +352,12 @@ def check_one(node, session):
     out["exit"] = None
     out["residential"] = "unknown"
     try:
-        r = session.get(url, timeout=CHECK_TIMEOUT, headers={"User-Agent": "Mozilla/5.0 (gate-checker)"})
+        r = session.get(
+            WORKER_CHECK_URL,
+            params={"sstp": f"vpn:vpn@{node['host']}:{node['port']}"},
+            timeout=CHECK_TIMEOUT,
+            headers={"User-Agent": "Mozilla/5.0 (gate-checker)"},
+        )
         if r.status_code != 200:
             out["error"] = f"HTTP {r.status_code}"
             out["worker_error"] = True
@@ -468,6 +493,8 @@ def write_outputs(data, edge_hosts):
 # main
 # ---------------------------------------------------------------------------
 def main():
+    global WORKER_CHECK_URL
+    WORKER_CHECK_URL = normalize_worker_url(RAW_CHECK_WORKER)
     session = requests.Session()
     rows, source = fetch_vpngate()
     raw_count = len(rows)
@@ -509,6 +536,11 @@ def main():
 
     # 动态拉取 API 并与静态优选域名混合
     edge_hosts = get_combined_edge_hosts()
+    if success and not edge_hosts:
+        die(
+            "未获取到入口地址。请配置 EDGE_HOSTS 或 HOSTS_ENTRY，"
+            "或提供可用的 OPTIMAL_API"
+        )
 
     data_path, html_path, nodes_path = write_outputs(data, edge_hosts)
     log("WEBSITE", f"生成 {os.path.relpath(data_path, REPO_DIR)}")
